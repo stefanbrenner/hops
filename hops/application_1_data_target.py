@@ -584,6 +584,18 @@ class DataTargetWindow(MainWindow):
             self.auto_target_ra_dec.set('Not found')
             self.target_ra_dec_choice_0['state'] = self.DISABLED
 
+        # the object name of the header (OBJECT) is used as target if SIMBAD finds it, unless a target
+        # was chosen by hand
+        name = data_target.auto_target_name(self.science_header)
+        choice = self.target_ra_dec_choice.get()
+        if choice == 0 or (choice == 1 and self.simbad_target_name.get() == getattr(self, 'header_target_name', None)):
+            if name and data_target.target_ok(data_target.resolve_target(1, '', name, '')[0]):
+                self.target_ra_dec_choice.set(1)
+                self.simbad_target_name.set(name)
+            elif choice == 1 and auto:
+                self.target_ra_dec_choice.set(0)
+        self.header_target_name = name
+
         self.update_ra_dec()
 
     def update_ra_dec(self, *event):
@@ -597,6 +609,8 @@ class DataTargetWindow(MainWindow):
             self.manual_target_ra_dec.set('')
         elif choice == 1:
             self.simbad_target_name.activate()
+            if not self.simbad_target_name.get().strip():
+                self.simbad_target_name.set(data_target.auto_target_name(self.science_header) or '')
             self.simbad_target_name.widget.focus()
             self.manual_target_ra_dec.disable()
             self.manual_target_ra_dec.set('')

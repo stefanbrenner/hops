@@ -71,6 +71,17 @@ def auto_target_ra_dec(header, log):
     return None
 
 
+# header keywords with the name of the observed object, used as the default SIMBAD search name
+TARGET_NAME_KEYS = 'OBJECT'
+
+
+def auto_target_name(header):
+    name = _first_key(header, TARGET_NAME_KEYS)
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
 def _describe(nearest):
     notes = ''
     if len(nearest.all_names) > 0:
@@ -233,6 +244,7 @@ def check(project, cache, draft):
         'time_key_locked': time_key_locked,
         'filter': filter_value,
         'auto_target_ra_dec': auto_target_ra_dec(header, log),
+        'auto_target_name': auto_target_name(header),
         'auto_location': auto_location(header, log),
         'profile_location': profile_location(log),
         'observing_info': observing_info(draft, header, log),

@@ -14,6 +14,7 @@ interface Check {
   time_key_locked: boolean
   filter: string
   auto_target_ra_dec: string | null
+  auto_target_name: string | null
   auto_location: string | null
   profile_location: string | null
   observing_info: Record<string, string>
@@ -43,9 +44,12 @@ export default function DataTarget({ onSaved }: Props) {
   const lastAuto = useRef<string | null>(null)
 
   useEffect(() => {
+    // a late response of an earlier load must not replace the values set automatically since then
+    let active = true
     api.get<{ values: Values; filters: string[]; time_stamps: string[] }>('/data-target')
-      .then(r => { setValues(r.values); setFilters(r.filters); setTimeStamps(r.time_stamps) })
-      .catch(e => setError(e.message))
+      .then(r => { if (active) { setValues(r.values); setFilters(r.filters); setTimeStamps(r.time_stamps) } })
+      .catch(e => active && setError(e.message))
+    return () => { active = false }
   }, [])
 
   const set = (patch: Values) => setValues(v => ({ ...v!, ...patch }))
@@ -71,14 +75,30 @@ export default function DataTarget({ onSaved }: Props) {
           for (const k of ['observer', 'observatory', 'telescope', 'camera']) {
             if (values[k] === 'default') patch[k] = c.observing_info[k]
           }
-          // like the Tk window: the header coordinates / location are applied automatically when chosen
+          // the target is taken from the header automatically, unless one was chosen by hand: first the
+          // object name (OBJECT) if SIMBAD finds it, otherwise the header coordinates (like the Tk window)
           const auto = c.auto_target_ra_dec ?? 'Not found'
-          if (auto !== lastAuto.current) {
-            lastAuto.current = auto
+          const autoName = c.auto_target_name ?? ''
+          if (auto + autoName !== lastAuto.current) {
+            lastAuto.current = auto + autoName
             patch.auto_target_ra_dec = auto
-            if (values.target_ra_dec_choice === 0) {
-              api.post<{ target_ra_dec: string; target_name: string }>('/data-target/resolve-target', { choice: 0, auto_target_ra_dec: auto })
-                .then(r => set({ target_ra_dec: r.target_ra_dec, target_name: r.target_name }))
+            patch.auto_target_name = autoName
+            const automatic = values.target_ra_dec_choice === 0 ||
+              (values.target_ra_dec_choice === 1 && !!values.auto_target_name && values.simbad_target_name === values.auto_target_name)
+            const fromCoordinates = () => {
+              if (c.auto_target_ra_dec) {
+                api.post<{ target_ra_dec: string; target_name: string }>('/data-target/resolve-target', { choice: 0, auto_target_ra_dec: auto })
+                  .then(r => set({ target_ra_dec_choice: 0, simbad_target_name: '', target_ra_dec: r.target_ra_dec, target_name: r.target_name }))
+              }
+            }
+            if (automatic && autoName) {
+              api.post<{ target_ra_dec: string; target_name: string; ok: boolean }>('/data-target/resolve-target', { choice: 1, simbad_target_name: autoName })
+                .then(r => r.ok
+                  ? set({ target_ra_dec_choice: 1, simbad_target_name: autoName, target_ra_dec: r.target_ra_dec, target_name: r.target_name })
+                  : fromCoordinates())
+                .catch(fromCoordinates)
+            } else if (automatic) {
+              fromCoordinates()
             }
           }
           patch.auto_location = c.auto_location ?? 'Not found'
@@ -281,7 +301,9 @@ function HeaderModal({ pattern, onClose }: { pattern: string; onClose: () => voi
 
 function TargetModal({ values, onClose, onChoose }: { values: Values; onClose: () => void; onChoose: (v: Values) => void }) {
   const [choice, setChoice] = useState<number>(values.target_ra_dec_choice)
-  const [name, setName] = useState<string>(values.simbad_target_name === 'Target name' ? '' : values.simbad_target_name)
+  const headerName: string = values.auto_target_name || ''
+  const [name, setName] = useState<string>(
+    values.simbad_target_name && values.simbad_target_name !== 'Target name' ? values.simbad_target_name : headerName)
   const [manual, setManual] = useState<string>(values.manual_target_ra_dec)
   const [result, setResult] = useState<{ target_ra_dec: string; target_name: string; ok: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -294,7 +316,10 @@ function TargetModal({ values, onClose, onChoose }: { values: Values; onClose: (
     }).then(setResult).finally(() => setBusy(false))
   }
 
-  useEffect(() => { if (choice === 0 && autoAvailable) resolve(0) }, [choice])
+  useEffect(() => {
+    if (choice === 0 && autoAvailable) resolve(0)
+    if (choice === 1 && name.trim()) resolve(1)
+  }, [choice])
 
   const choose = () => {
     if (!result) return
@@ -328,6 +353,7 @@ function TargetModal({ values, onClose, onChoose }: { values: Values; onClose: (
         <input type="radio" checked={choice === 1} readOnly />
         <div className="stack">
           <div>Provide the name of the target (SIMBAD)</div>
+          {headerName && <div className="faint">From the FITS header (OBJECT): <span className="mono">{headerName}</span></div>}
           <form className="row" onSubmit={e => { e.preventDefault(); setChoice(1); resolve(1) }}>
             <input style={{ flex: 1 }} placeholder="KPS-1" value={name} disabled={choice !== 1} onChange={e => setName(e.target.value)} />
             <button type="submit" disabled={choice !== 1 || busy}>Search</button>
