@@ -7,7 +7,6 @@ import shutil
 import exoclock
 import hops.pylightcurve41 as plc
 
-from scipy.interpolate import interp1d
 from astropy.io import fits as pf
 
 from hops.hops_tools.fits import *
@@ -355,12 +354,11 @@ class ReductionWindow(MainWindow):
                 bp_map[:, 0] = 0
                 bp_map[:, -1] = 0
 
+                columns = np.arange(len(self.master_flat[0]))
                 for line in range(len(self.master_flat)):
-                    clean_pixs = np.where(bp_map[line] == 0)
-                    points = clean_pixs[0]
-                    values = self.master_flat[line][clean_pixs]
-                    line_model = interp1d(points, values)
-                    self.master_flat[line] = line_model(np.arange(len(self.master_flat[line])))
+                    clean_pixs = np.where(bp_map[line] == 0)[0]
+                    # what interp1d(clean_pixs, values) evaluates to for these inputs
+                    self.master_flat[line] = np.interp(columns, clean_pixs, self.master_flat[line][clean_pixs])
 
                 # self.master_flat = np.where(self.master_flat <= 0, 1, self.master_flat)
                 # self.master_flat = np.where(np.isnan(self.master_flat), 1, self.master_flat)
