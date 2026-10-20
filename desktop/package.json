@@ -1,0 +1,14 @@
+{
+  "name": "hops-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "npm --prefix ../hops/web/frontend run build && python3 scripts/bundle_python.py --app-only && CI=true PATH=\"$HOME/.cargo/bin:$PATH\" tauri build --bundles app,dmg",
+    "engine": "python3 scripts/bundle_python.py"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.9.6"
+  }
+}

@@ -1,47 +1,21 @@
 
-import numpy as np
 import datetime
 import exoclock
 
 from hops.application_windows import MainWindow
+from hops.core import planner
 
 
 def test_coordinates2(ra_string, dec_string):
-
-    try:
-        exoclock.FixedTarget(exoclock.Hours(ra_string), exoclock.Degrees(dec_string))
+    if planner.test_coordinates(ra_string, dec_string):
         return [True, 'Coordinates\naccepted']
-    except:
-        return [False, 'Wrong\ncoordinates']
+    return [False, 'Wrong\ncoordinates']
 
 
 def test_date(year_month_string):
-
-    pass_test = True
-
-    if len(year_month_string.split()) != 2:
-        pass_test = False
-
-    elif len(year_month_string.split()[0]) != 4:
-        pass_test = False
-
-    elif len(year_month_string.split()[1]) != 2:
-        pass_test = False
-    else:
-        try:
-            year = int(year_month_string.split()[0])
-            month = int(year_month_string.split()[1])
-            if int(month) < 1 or int(month) > 12:
-                pass_test = False
-            if int(year) < 0:
-                pass_test = False
-        except:
-            pass_test = False
-
-    if pass_test:
-        return[True, 'Date\naccepted']
-    else:
-        return [False, 'Wrong\ndate']
+    if planner.test_date(year_month_string):
+        return [True, 'Date\naccepted']
+    return [False, 'Wrong\ndate']
 
 
 class ObservingPlannerWindow(MainWindow):
@@ -199,132 +173,5 @@ class ObservingPlannerWindow(MainWindow):
 
     def avc_plot(self, latitude, longitude, tmzn, horizon, target_ra, target_dec, year_mont_string, ax, name,
                  observatory_name):
-        ax.cla()
-
-        target = exoclock.FixedTarget(exoclock.Hours(target_ra), exoclock.Degrees(target_dec))
-        observatory = exoclock.Observatory(exoclock.Degrees(latitude), exoclock.Degrees(longitude), tmzn, horizon)
-
-        year = int(year_mont_string.split()[0])
-        month = int(year_mont_string.split()[1])
-
-        months = ['xx', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
-                  'October',
-                  'November', 'December']
-        if (year - 2000) / 4.0 - int((year - 2000) / 4.0) == 0:
-            days = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        else:
-            days = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-
-        jd_0 = exoclock.Moment('{0}-{1}-01 12:00:00'.format(year, str(month).zfill(2))).jd_utc() - tmzn / 24
-        time_0 = exoclock.Moment(jd_utc=jd_0)
-
-        events = []
-
-        # mid-day splits
-
-        for jj in range(days[month] + 1):
-            events.append([exoclock.Moment(jd_utc=time_0.jd_utc() + jj), 'mid-day'])
-
-        # target rise/set events
-
-        events += observatory.target_horizon_crossings(target, time_0, days[month])
-
-        # sun rise/set events
-
-        for jj in range(days[month]):
-
-            check_time = exoclock.Moment(jd_utc=time_0.jd_utc() + jj)
-
-            sun = exoclock.Sun(check_time)
-            fixed_sun = exoclock.FixedTarget(sun.ra, sun.dec)
-
-            # # sun rise/set
-            sun_events = observatory.target_horizon_crossings(fixed_sun, check_time, 1)
-            for i in range(len(sun_events)):
-                if sun_events[i][1] == 'rise':
-                    sun_events[i][1] = 'sun_rise'
-                elif sun_events[i][1] == 'set':
-                    sun_events[i][1] = 'sun_set'
-
-            events += sun_events
-
-            # sun -18 rise/set
-
-            twilight_events = observatory.target_altitude_crossings(fixed_sun, check_time, 1, exoclock.Degrees(-18))
-            for i in range(len(twilight_events)):
-                if twilight_events[i][1] == 'rise':
-                    twilight_events[i][1] = 'sun_rise_18'
-                elif twilight_events[i][1] == 'set':
-                    twilight_events[i][1] = 'sun_set_18'
-
-            events += twilight_events
-
-        events2 = [[ff[0].jd_utc(), ff[0], ff[1]] for ff in events]
-        events2.sort(key=lambda ff: ff[0])
-
-        # for i in events2:
-        #     print(i)
-
-        ax.xaxis.tick_top()
-
-        ax.set_title(observatory_name + '\n' + name + '   ' + months[month] + ' ' + str(year))
-        ax.set_xlim((0, 1))
-        ax.set_xlabel('HOUR (UTC{0:+.1f})'.format(tmzn))
-        ax.set_xticks(np.arange(0, 24.5, 1))
-        ax.set_xticklabels(('12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23',
-                            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'))
-        ax.set_ylim((0, days[month] + 1))
-        ax.set_ylabel('DAY')
-        ax.set_yticks(np.arange(1, days[month] + 0.5, 1))
-        ax.tick_params(bottom=True, top=True, left=True, right=True, labelbottom=True, labeltop=True,
-                       labelright=False, labelleft=True)
-        ax.grid(True, axis='y', linestyle='--')
-
-        for jj, ii in enumerate(events2[:-1]):
-
-            test_jd = 0.5 * (ii[0] + events2[jj + 1][0])
-            check_time = exoclock.Moment(jd_utc=test_jd)
-
-            day = 1 + int(test_jd - jd_0)
-
-            time_range = [(ii[0] - jd_0 - int(ii[0] - jd_0)) * 24,
-                          (events2[jj + 1][0] - jd_0 - int(events2[jj + 1][0] - jd_0)) * 24]
-            if time_range[1] == 0:
-                time_range[1] = 24
-
-            alpha = 1
-            if not observatory.is_target_visible(target, check_time):
-                color = 'w'
-                alpha = 0
-            else:
-                sun_az, sun_alt = observatory.target_azimuth_altitude(exoclock.Sun(check_time), check_time)
-                if sun_alt.deg_coord() > 0:
-                    color = 'y'
-                elif sun_alt.deg_coord() > -18:
-                    color = 'r'
-                else:
-                    color = str(0.8 * exoclock.Moon(check_time).illumination())
-
-            ax.plot(time_range, [day, day], linewidth=2.5, color=color, alpha=alpha)
-
-            shift = {'left': +0.3, 'right': -0.3}
-
-            if ii[2] == 'target_set':
-                ax.plot(time_range[0], day, 'k*', mec='k', markersize=8)
-                if time_range[0] > 20.5:
-                    align = 'right'
-                else:
-                    align = 'left'
-                ax.text(time_range[0] + shift[align], day + 0.4,
-                        'set: ' + (ii[1].utc + datetime.timedelta(days=tmzn / 24)).isoformat().split('T')[1][:5],
-                        va='center', ha=align, fontsize=9)
-
-            if ii[2] == 'target_rise':
-                ax.plot(time_range[0], day, 'w*', mec='k', markersize=8, markeredgewidth=0.5)
-                if time_range[0] < 3.5:
-                    align = 'left'
-                else:
-                    align = 'right'
-                ax.text(time_range[0] + shift[align], day + 0.4,
-                        'rise: ' + (ii[1].utc + datetime.timedelta(days=tmzn / 24)).isoformat().split('T')[1][:5],
-                        va='center', ha=align, fontsize=9)
+        planner.avc_plot(latitude, longitude, tmzn, horizon, target_ra, target_dec, year_mont_string, ax, name,
+                         observatory_name)

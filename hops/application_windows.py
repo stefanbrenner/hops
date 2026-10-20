@@ -6,6 +6,7 @@ import time
 import numpy as np
 import datetime
 import matplotlib
+import matplotlib.patches as mpatches
 import webbrowser
 import warnings
 
@@ -671,6 +672,14 @@ class HOPSProgressbar(HOPSWidget):
         if message != self.element_label['text']:
             self.element_label.configure(text=message)
 
+    def set_state(self, current, total, eta=None, message=None):
+        """Show the progress of a hops.core job task (see application_jobs.TkJobRunner)."""
+        percent = round(100 * float(current) / float(max(total, 1)), 1)
+        self.task_label.configure(text=self.task + ' - {0} % - time left: {1} '.format(percent, eta or '-'))
+        self.progress.set(percent)
+        if message is not None:
+            self.show_message(message)
+
     def update(self, step=1, skip=0):
 
         self.current_iteration += step
@@ -986,6 +995,19 @@ class HOPSFitsWindow(HOPSWidget):
 
         if draw:
             self.draw()
+
+    def draw_overlays(self, overlays):
+        """Draw hops.core preview overlays (circles, rectangles, texts, arrows) in data coordinates."""
+        for o in overlays:
+            if o['type'] == 'circle':
+                self.ax.add_patch(mpatches.Circle((o['x'], o['y']), o['r'], ec=o['color'], fill=False,
+                                                  ls=':' if o.get('dash') else '-'))
+            elif o['type'] == 'rect':
+                self.ax.add_patch(mpatches.Rectangle((o['x'], o['y']), o['w'], o['h'], ec=o['color'], fill=False))
+            elif o['type'] == 'text':
+                self.ax.text(o['x'], o['y'], o['text'], color=o['color'], va='top', ha='left')
+            elif o['type'] == 'arrow':
+                self.ax.add_patch(mpatches.Arrow(o['x'], o['y'], o['dx'], o['dy'], width=abs(o['dx']) / 3, color=o['color']))
 
     def reverse_color(self):
         if self.white_sky.get():

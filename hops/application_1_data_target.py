@@ -1,53 +1,14 @@
 
 import os
 import numpy as np
-import exoclock
-import hops.pylightcurve41 as plc
 
-from astropy.io import fits as pf
-
-from hops.hops_tools.fits import *
-from hops.hops_tools.image_analysis import bin_frame
+from hops.hops_tools.fits import find_fits_files, get_fits_data_and_header
+from hops.core import data_target
+from hops.core.common import filter_map
+from hops.core.project import Project
 
 from .application_windows import MainWindow, AddOnWindow
 
-
-filter_map = {'Clear': 'clear',
-              'Luminance': 'luminance',
-              'U': 'JOHNSON_U',
-              'B': 'JOHNSON_B',
-              'V': 'JOHNSON_V',
-              'R': 'COUSINS_R',
-              'I': 'COUSINS_I',
-              'H': '2mass_h',
-              'J': '2mass_j',
-              'K': '2mass_ks',
-              'Astrodon ExoPlanet-BB': 'exoplanets_bb',
-              'u\'': 'sdss_u',
-              'g\'': 'sdss_g',
-              'r\'': 'sdss_r',
-              'z\'': 'sdss_z',
-              'i\'': 'sdss_i',
-              }
-
-filter_translations = {
-    'Clear': ['clear', 'None', 'Clear'],
-    'Luminance': ['luminance', 'Luminance', 'lum', 'Lum', 'L'],
-    'U': ['U', 'Uj', 'u'],
-    'B': ['B', 'Bj', 'b'],
-    'V': ['V', 'Vj', 'v'],
-    'R': ['R', 'Rc', 'r'],
-    'I': ['I', 'Ic', 'i'],
-    'H': ['H', 'h'],
-    'J': ['J', 'j'],
-    'K': ['K', 'k', 'Ks', 'KS'],
-    'Astrodon ExoPlanet-BB': ['exoplanets_bb', 'exoplanets'],
-    'u\'': ['up', 'u\''],
-    'g\'': ['gp', 'g\''],
-    'r\'': ['rp', 'r\''],
-    'z\'': ['zp', 'z\''],
-    'i\'': ['ip', 'i\''],
-}
 
 __location__ = os.path.abspath(os.path.dirname(__file__))
 
@@ -585,35 +546,13 @@ class DataTargetWindow(MainWindow):
 
     def update_preview_final(self):
 
-        data_frame = np.ones_like(self.science_data) * self.science_data
-
-        data_frame = data_frame[self.crop_y1.get(): self.crop_y2.get()]
-        data_frame = data_frame[:, self.crop_x1.get(): self.crop_x2.get()]
-
-        if self.crop_edge_pixels.get() > 0:
-            data_frame = data_frame[self.crop_edge_pixels.get():-self.crop_edge_pixels.get(),
-                         self.crop_edge_pixels.get():-self.crop_edge_pixels.get()]
-
-        if self.bin_fits.get() > 1:
-            data_frame = bin_frame(data_frame, self.bin_fits.get())
-        try:
-            os.remove('.test_size.fits')
-        except:
-            pass
-
-        hdu = pf.CompImageHDU(data=np.array(data_frame, dtype=np.int32))
-        plc.save_fits(pf.HDUList([pf.PrimaryHDU(), hdu]), '.test_size.fits')
-
-        self.final_figure_size.set(
-            'Image after reduction: {0} MB'.format(round(os.stat('.test_size.fits').st_size/1024.0/1024.0, 2))
-        )
-
-        os.remove('.test_size.fits')
-
+        data_frame = data_target.preview_frame(self.science_data, self.crop_x1.get(), self.crop_x2.get(),
+                                               self.crop_y1.get(), self.crop_y2.get(),
+                                               self.crop_edge_pixels.get(), self.bin_fits.get())
+        self.final_figure_size.set('Image after reduction: {0} MB'.format(data_target.reduced_size_mb(data_frame)))
         self.final_figure.load_fits(data_frame, self.science_header,
                                     input_name='This is only an example of the reduction output.  '
-                                                    'Select the area to crop on the left image.')
-        # self.final_figure.draw()
+                                               'Select the area to crop on the left image.')
 
     def update_bias_files(self, *event):
 
@@ -637,142 +576,49 @@ class DataTargetWindow(MainWindow):
 
     def update_ra_dec_options(self, *event):
 
-        self.auto_target_ra_dec.set('Not found')
-        self.target_ra_dec_choice_0['state'] = self.DISABLED
-
-        ra = None
-        for key in self.log.get_param('target_ra_key').split(','):
-            if key in self.science_header:
-                ra = self.science_header[key]
-                break
-
-        dec = None
-        for key in self.log.get_param('target_dec_key').split(','):
-            if key in self.science_header:
-                dec = self.science_header[key]
-                break
-
-        if ra and dec:
-            try:
-                if isinstance(ra, str):
-                    target = exoclock.FixedTarget(exoclock.Hours(ra.replace(',', '.').replace(' ', ':')),
-                                                  exoclock.Degrees(dec.replace(',', '.').replace(' ', ':')))
-                    self.auto_target_ra_dec.set(target.coord())
-                    self.target_ra_dec_choice_0['state'] = self.NORMAL
-                elif isinstance(ra, float):
-                    target = exoclock.FixedTarget(exoclock.Degrees(ra), exoclock.Degrees(dec))
-                    self.auto_target_ra_dec.set(target.coord())
-                    self.target_ra_dec_choice_0['state'] = self.NORMAL
-            except:
-                pass
+        auto = data_target.auto_target_ra_dec(self.science_header, self.log)
+        if auto:
+            self.auto_target_ra_dec.set(auto)
+            self.target_ra_dec_choice_0['state'] = self.NORMAL
+        else:
+            self.auto_target_ra_dec.set('Not found')
+            self.target_ra_dec_choice_0['state'] = self.DISABLED
 
         self.update_ra_dec()
 
     def update_ra_dec(self, *event):
 
-        if self.target_ra_dec_choice.get() == 0:
+        choice = self.target_ra_dec_choice.get()
 
+        if choice == 0:
             self.simbad_target_name.disable()
             self.simbad_target_name.set('')
             self.manual_target_ra_dec.disable()
             self.manual_target_ra_dec.set('')
-
-            try:
-                target = exoclock.FixedTarget(
-                    exoclock.Hours(self.auto_target_ra_dec.get().split(' ')[0]),
-                    exoclock.Degrees(self.auto_target_ra_dec.get().split(' ')[1])
-                )
-
-                try:
-                    nearest = exoclock.simbad_search_by_coordinates(target.ra, target.dec,
-                                                                    radius=exoclock.Degrees(0.25))
-                    nearest._notes = ''
-                    if len(nearest.all_names) > 0:
-                        test = list(set(nearest.all_names).intersection(list(exoclock.exoclock_data.ecc()['hosts'])))
-                        if len(test) > 0:
-                            nearest._notes = '/ Host of: ' + ', '.join(exoclock.exoclock_data.ecc()['hosts'][test[0]])
-
-                    self.target_ra_dec_2.set(nearest.coord())
-                    if nearest._notes:
-                        self.target_name_2.set(nearest.name + ' ' + nearest._notes)
-                    else:
-                        self.target_name_2.set(nearest.name)
-                except:
-                    self.target_ra_dec_2.set(self.auto_target_ra_dec.get())
-                    self.target_name_2.set('Name not resolved')
-            except:
-                self.target_ra_dec_2.set('Coordinates not found')
-                self.target_name_2.set('Name not resolved')
-
-        elif self.target_ra_dec_choice.get() == 1:
-
+        elif choice == 1:
             self.simbad_target_name.activate()
             self.simbad_target_name.widget.focus()
             self.manual_target_ra_dec.disable()
             self.manual_target_ra_dec.set('')
-
-            try:
-                nearest = exoclock.simbad_search_by_name(self.simbad_target_name.get())
-                nearest._notes = ''
-                if len(nearest.all_names) > 0:
-                    test = list(set(nearest.all_names).intersection(list(exoclock.exoclock_data.ecc()['hosts'])))
-                    if len(test) > 0:
-                        nearest._notes = '/ Host of: ' + ', '.join(exoclock.exoclock_data.ecc()['hosts'][test[0]])
-
-                self.target_ra_dec_2.set(nearest.coord())
-                if nearest._notes:
-                    self.target_name_2.set(nearest.name + ' ' + nearest._notes)
-                else:
-                    self.target_name_2.set(nearest.name)
-            except:
-                self.target_ra_dec_2.set('Coordinates not found')
-                self.target_name_2.set('Name not resolved')
-
         else:
-
             self.simbad_target_name.disable()
             self.simbad_target_name.set('')
             self.manual_target_ra_dec.activate()
             self.manual_target_ra_dec.widget.focus()
 
-            try:
-                if len(self.manual_target_ra_dec.get().split(':')) == 5:
-                    target = exoclock.FixedTarget(
-                        exoclock.Hours(self.manual_target_ra_dec.get().split(' ')[0]),
-                        exoclock.Degrees(self.manual_target_ra_dec.get().split(' ')[1])
-                    )
-                    nearest = exoclock.simbad_search_by_coordinates(target.ra, target.dec,
-                                                                    radius=exoclock.Degrees(0.25))
-                    nearest._notes = ''
-                    if len(nearest.all_names) > 0:
-                        test = list(set(nearest.all_names).intersection(list(exoclock.exoclock_data.ecc()['hosts'])))
-                        if len(test) > 0:
-                            nearest._notes = '/ Host of: ' + ', '.join(exoclock.exoclock_data.ecc()['hosts'][test[0]])
-
-                    self.target_ra_dec_2.set(nearest.coord())
-                    if nearest._notes:
-                        self.target_name_2.set(nearest.name + ' ' + nearest._notes)
-                    else:
-                        self.target_name_2.set(nearest.name)
-                else:
-                    self.target_ra_dec_2.set(self.manual_target_ra_dec.get())
-                    self.target_name_2.set(' ')
-            except:
-                self.target_ra_dec_2.set(self.manual_target_ra_dec.get())
-                self.target_name_2.set(' ')
+        ra_dec, name = data_target.resolve_target(choice, self.auto_target_ra_dec.get(),
+                                                  self.simbad_target_name.get(), self.manual_target_ra_dec.get())
+        self.target_ra_dec_2.set(ra_dec)
+        self.target_name_2.set(name)
 
     def choose_target(self, *event):
 
         self.target_ra_dec.set(self.target_ra_dec_2.get())
         self.target_name.set(self.target_name_2.get())
 
-        try:
-
-            _ = exoclock.FixedTarget(exoclock.Hours(self.target_ra_dec.get().split(' ')[0]),
-                                     exoclock.Degrees(self.target_ra_dec.get().split(' ')[1]))
+        if data_target.target_ok(self.target_ra_dec.get()):
             self.target_ra_dec_test.set('   OK   ')
-
-        except:
+        else:
             self.target_ra_dec_test.set('Wrong coordinates\nyou cannot proceed')
 
         self.update_save_button()
@@ -780,44 +626,13 @@ class DataTargetWindow(MainWindow):
 
     def update_location_options(self, *event):
 
-        self.auto_location.set('Not found')
-        self.location_choice_0['state'] = self.DISABLED
+        auto = data_target.auto_location(self.science_header, self.log)
+        self.auto_location.set(auto or 'Not found')
+        self.location_choice_0['state'] = self.NORMAL if auto else self.DISABLED
 
-        lat = None
-        for key in self.log.get_param('observatory_latitude_key').split(','):
-            if key in self.science_header:
-                lat = self.science_header[key]
-                break
-
-        long = None
-        for key in self.log.get_param('observatory_longitude_key').split(','):
-            if key in self.science_header:
-                long = self.science_header[key]
-                break
-
-        if lat and long:
-            try:
-                if isinstance(lat, str):
-                    observatory = exoclock.Observatory(exoclock.Degrees(lat.replace(',', '.')),
-                                                  exoclock.Degrees(long.replace(',', '.')))
-                    self.auto_location.set(observatory.coord())
-                    self.location_choice_0['state'] = self.NORMAL
-                elif isinstance(lat, float):
-                    observatory = exoclock.Observatory(exoclock.Degrees(lat), exoclock.Degrees(long))
-                    self.auto_location.set(observatory.coord())
-                    self.location_choice_0['state'] = self.NORMAL
-            except:
-                pass
-
-        self.profile_location.set('Not found')
-        self.location_choice_1['state'] = self.DISABLED
-        try:
-            observatory = exoclock.Observatory(exoclock.Degrees(self.log.get_param('observatory_lat')),
-                                          exoclock.Degrees(self.log.get_param('observatory_long')))
-            self.profile_location.set(observatory.coord())
-            self.location_choice_1['state'] = self.NORMAL
-        except:
-            pass
+        profile = data_target.profile_location(self.log)
+        self.profile_location.set(profile or 'Not found')
+        self.location_choice_1['state'] = self.NORMAL if profile else self.DISABLED
 
         self.update_location()
 
@@ -841,13 +656,9 @@ class DataTargetWindow(MainWindow):
 
     def choose_location(self, *event):
 
-        try:
-
-            observatory = exoclock.Observatory(exoclock.Degrees(self.location.get().split(' ')[0]),
-                                          exoclock.Degrees(self.location.get().split(' ')[1]))
+        if data_target.location_ok(self.location.get()):
             self.location_test.set('   OK   ')
-
-        except:
+        else:
             self.location_test.set('Wrong coordinates\nyou cannot proceed')
 
         self.update_save_button()
@@ -890,72 +701,17 @@ class DataTargetWindow(MainWindow):
 
     def update_observing_info(self, *event):
 
-        if self.telescope.get() == 'default':
-            for key in self.log.get_param('telescope_key').split(','):
-                if key in self.science_header:
-                    self.telescope.set(self.science_header[key])
-                    break
-            if self.telescope.get() == 'default':
-                self.telescope.set(self.log.get_param('telescope'))
-
-        if self.camera.get() == 'default':
-            for key in self.log.get_param('camera_key').split(','):
-                if key in self.science_header:
-                    self.camera.set(self.science_header[key])
-                    break
-            if self.camera.get() == 'default':
-                self.camera.set(self.log.get_param('camera'))
-
-        if self.observer.get() == 'default':
-            for key in self.log.get_param('observer_key').split(','):
-                if key in self.science_header:
-                    self.observer.set(self.science_header[key])
-                    break
-            if self.observer.get() == 'default':
-                self.observer.set(self.log.get_param('observer'))
-
-        if self.observatory.get() == 'default':
-            for key in self.log.get_param('observatory_key').split(','):
-                if key in self.science_header:
-                    self.observatory.set(self.science_header[key])
-                    break
-            if self.observatory.get() == 'default':
-                self.observatory.set(self.log.get_param('observatory'))
+        values = {field: getattr(self, field).get() for field in ['observer', 'observatory', 'telescope', 'camera']}
+        for field, value in data_target.observing_info(values, self.science_header, self.log).items():
+            getattr(self, field).set(value)
 
         self.check_filter()
 
     def check_filter(self):
 
-        if self.filter.get() not in filter_map:
-
-            for filter in filter_translations:
-                if self.filter.get() in filter_translations[filter]:
-                    self.filter.set(filter)
-
-        if self.filter.get() not in filter_map:
-
-            for key in self.log.get_param('filter_key').split(','):
-                if key in self.science_header:
-                    self.filter.set(self.science_header[key])
-                    break
-
-            for filter in filter_translations:
-                if self.filter.get() in filter_translations[filter]:
-                    self.filter.set(filter)
-
-        if self.filter.get() not in filter_map:
-
-            self.filter.set(self.log.get_param('filter'))
-
-            for filter in filter_translations:
-                if self.filter.get() in filter_translations[filter]:
-                    self.filter.set(filter)
-
-        if self.filter.get() not in filter_map:
-            self.filter.set('No filter chosen')
-            self.filter_test.set('Filter not valid\nyou cannot proceed')
-        else:
-            self.filter_test.set('   OK   ')
+        value, ok = data_target.normalise_filter(self.filter.get(), self.science_header, self.log)
+        self.filter.set(value)
+        self.filter_test.set('   OK   ' if ok else 'Filter not valid\nyou cannot proceed')
 
         self.update_save_button()
 
@@ -990,50 +746,23 @@ class DataTargetWindow(MainWindow):
 
     def save(self):
 
-        self.log.set_param('observation_files', self.observation_files.get())
-        self.log.set_param('bias_files', self.bias_files.get())
-        self.log.set_param('dark_files', self.dark_files.get())
-        self.log.set_param('darkf_files', self.dark_flat_files.get())
-        self.log.set_param('flat_files', self.flat_files.get())
-        self.log.set_param('bin_fits', self.bin_fits.get())
-        self.log.set_param('crop_x1', self.crop_x1.get())
-        self.log.set_param('crop_x2', self.crop_x2.get())
-        self.log.set_param('crop_y1', self.crop_y1.get())
-        self.log.set_param('crop_y2', self.crop_y2.get())
-        self.log.set_param('faint_target_mode', self.faint_target_mode.get())
-        if self.faint_target_mode.get():
-            self.log.set_param('centroids_snr', 2)
-            self.log.set_param('psf_guess', 1)
-            self.log.set_param('stars_snr', 2)
-        self.log.set_param('moving_target_mode', self.moving_target_mode.get())
-        self.log.set_param('rotating_field_mode', self.rotating_field_mode.get())
-        self.log.set_param('colour_camera_mode', self.colour_camera_mode.get())
-        self.log.set_param('crop_edge_pixels', self.crop_edge_pixels.get())
-        self.log.set_param('target_ra_dec_choice', self.target_ra_dec_choice.get())
-        self.log.set_param('auto_target_ra_dec', self.auto_target_ra_dec.get())
-        self.log.set_param('manual_target_ra_dec', self.manual_target_ra_dec.get())
-        self.log.set_param('simbad_target_name', self.simbad_target_name.get())
-        self.log.set_param('target_ra_dec', self.target_ra_dec.get())
-        self.log.set_param('target_name', self.target_name.get())
-        self.log.set_param('location_choice', self.location_choice.get())
-        self.log.set_param('auto_location', self.auto_location.get())
-        self.log.set_param('manual_location', self.manual_location.get())
-        self.log.set_param('location', self.location.get())
-        self.log.set_param('time_stamp', self.time_stamp.get())
-        self.log.set_param('exposure_time_key', self.exposure_time_key.get())
-        self.log.set_param('observation_date_key', self.observation_date_key.get())
-        self.log.set_param('observation_time_key', self.observation_time_key.get())
-        self.log.set_param('observer', self.observer.get())
-        self.log.set_param('observatory', self.observatory.get())
-        self.log.set_param('telescope', self.telescope.get())
-        self.log.set_param('camera', self.camera.get())
-        self.log.set_param('filter', self.filter.get())
+        values = {
+            'observation_files': self.observation_files.get(),
+            'bias_files': self.bias_files.get(),
+            'dark_files': self.dark_files.get(),
+            'darkf_files': self.dark_flat_files.get(),
+            'flat_files': self.flat_files.get(),
+            'target_ra_dec_choice': self.target_ra_dec_choice.get(),
+            'location_choice': self.location_choice.get(),
+        }
+        for key in ['bin_fits', 'crop_x1', 'crop_x2', 'crop_y1', 'crop_y2', 'faint_target_mode', 'moving_target_mode',
+                    'rotating_field_mode', 'colour_camera_mode', 'crop_edge_pixels', 'auto_target_ra_dec',
+                    'manual_target_ra_dec', 'simbad_target_name', 'target_ra_dec', 'target_name', 'auto_location',
+                    'manual_location', 'location', 'time_stamp', 'exposure_time_key', 'observation_date_key',
+                    'observation_time_key', 'observer', 'observatory', 'telescope', 'camera', 'filter']:
+            values[key] = getattr(self, key).get()
 
-        self.log.set_param('data_target_complete', True)
-        self.log.set_param('data_target_version', self.log.version)
-
-        self.log.save_local_log_user()
-        self.log.save_local_log()
+        data_target.save(Project(self.log), values)
 
     def save_and_return(self):
 

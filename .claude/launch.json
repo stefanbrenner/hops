@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hops-web-backend",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "hops.web", "--no-browser"],
+      "port": 8737
+    },
+    {
+      "name": "hops-web-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "hops/web/frontend", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

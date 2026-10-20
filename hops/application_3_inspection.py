@@ -1,14 +1,13 @@
 
-import os
 import numpy as np
-import hops.pylightcurve41 as plc
 import matplotlib.patches as mpatches
-from astropy.coordinates import SkyCoord
 
 from matplotlib.backend_bases import MouseEvent as mpl_MouseEvent
 
 from hops.hops_tools.fits import get_fits_data_and_header
 from hops.application_windows import MainWindow
+from hops.core import inspection
+from hops.core.project import Project
 
 
 class InspectiontWindow(MainWindow):
@@ -20,42 +19,17 @@ class InspectiontWindow(MainWindow):
         ##############################################################################
         # set up time series
 
-        self.all_frames = plc.open_dict(self.log.all_frames)
+        # the time series come from hops.core, the same code the web interface uses
+        self.project = Project(self.log)
+        series = inspection.series(self.project)
 
-        self.science_files = []
-        for science_file in self.all_frames:
-            self.science_files.append([self.all_frames[science_file][self.log.time_key], science_file])
-
-        self.science_files.sort()
-        self.science_files = [ff[1] for ff in self.science_files]
-
-        self.science_keys = []
-        self.science = []
-        self.time_array = []
-        self.sky_mean_array = []
-        self.sky_std_array = []
-        self.airmass_array = []
-        self.psf_array = []
-        self.skip_array = []
-
-        for science_file in self.science_files:
-            self.science_keys.append(science_file)
-            self.science.append(os.path.join(self.log.reduction_directory, science_file))
-            self.time_array.append(self.all_frames[science_file][self.log.time_key])
-            self.sky_mean_array.append(self.all_frames[science_file][self.log.mean_key] / self.all_frames[science_file][self.log.get_param('exposure_time_key')])
-            self.sky_std_array.append(self.all_frames[science_file][self.log.std_key] / self.all_frames[science_file][self.log.get_param('exposure_time_key')])
-            self.psf_array.append(self.all_frames[science_file][self.log.psf_key] * 2.355 / 2)
-            try:
-                self.airmass_array.append(self.all_frames[science_file][self.log.airmass_key])
-            except:
-                self.airmass_array.append(1)
-            self.skip_array.append(self.all_frames[science_file][self.log.skip_key])
-
-        self.time_array = (np.array(self.time_array) - np.min(self.time_array)) * 24
-        self.sky_mean_array = np.array(self.sky_mean_array)
-        self.airmass_array = np.array(self.airmass_array)
-        self.psf_array = np.array(self.psf_array)
-        self.skip_array = np.array(self.skip_array)
+        self.science_files = series['files']
+        self.science = [self.project.reduced(name) for name in self.science_files]
+        self.time_array = np.array(series['time'])
+        self.sky_mean_array = np.array(series['sky'])
+        self.airmass_array = np.array(series['airmass'])
+        self.psf_array = np.array(series['psf'])
+        self.skip_array = np.array(series['skip'])
         ##############################################################################
 
         ##############################################################################
@@ -308,15 +282,7 @@ class InspectiontWindow(MainWindow):
 
     def save(self):
 
-        # self.log.set_param('sky_threshold', self.sky_threshold.get())
-        # self.log.set_param('psf_threshold', self.psf_threshold.get())
-
-        for science_file in range(len(self.science_files)):
-            self.all_frames[self.science_files[science_file]][self.log.skip_key] = self.skip_array[science_file]
-
-        plc.save_dict(self.all_frames, self.log.all_frames)
-
-        self.log.save_local_log()
+        inspection.save(self.project, {name: bool(self.skip_array[i]) for i, name in enumerate(self.science_files)})
 
     def save_and_return(self):
 

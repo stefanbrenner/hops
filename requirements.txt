@@ -15,3 +15,6 @@ exotethys>=2.0.15
 click
 photutils
 exoclock
+fastapi
+uvicorn
+websockets

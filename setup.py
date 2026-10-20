@@ -12,6 +12,9 @@ os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 subdirs_to_include = []
 for x in os.walk(name):
+    # the web frontend ships as the built bundle in hops/web/static, not its sources/dependencies
+    if 'node_modules' in x[0] or os.path.join('web', 'frontend') in x[0]:
+        continue
     if os.path.isdir(x[0]):
         if x[0] != name:
             subdirs_to_include.append(x[0])
