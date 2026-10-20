@@ -15,6 +15,18 @@ from hops.hops_tools.image_analysis import image_mean_std, image_burn_limit, ima
 from hops.application_windows import MainWindow
 
 
+def combine_frames(frames, method):
+    """Pixel-wise nanmedian (or nanmean) of a list of frames, in blocks of rows.
+
+    Gives the same values as the per-row list comprehension it replaces, much faster."""
+    combine = np.nanmean if method == 'mean' else np.nanmedian
+    result = np.empty_like(frames[0], dtype=float)
+    for start in range(0, len(frames[0]), 256):
+        rows = slice(start, start + 256)
+        result[rows] = combine(np.stack([frame[rows] for frame in frames]), axis=0)
+    return result
+
+
 class ReductionWindow(MainWindow):
 
     def __init__(self, log):
@@ -183,11 +195,11 @@ class ReductionWindow(MainWindow):
                 self.bias_frames = [self.bias_frames[ff] for ff in range(len(self.bias_frames))  if consistent_exp_time[ff]]
 
                 if self.log.get_param('master_bias_method') == 'median':
-                    self.master_bias = np.array([np.nanmedian([xx[ff] for xx in self.bias_frames], 0) for ff in range(len(self.bias_frames[0]))])
+                    self.master_bias = combine_frames(self.bias_frames, 'median')
                 elif self.log.get_param('master_bias_method') == 'mean':
-                    self.master_bias = np.array([np.nanmean([xx[ff] for xx in self.bias_frames], 0) for ff in range(len(self.bias_frames[0]))])
+                    self.master_bias = combine_frames(self.bias_frames, 'mean')
                 else:
-                    self.master_bias = np.array([np.nanmedian([xx[ff] for xx in self.bias_frames], 0) for ff in range(len(self.bias_frames[0]))])
+                    self.master_bias = combine_frames(self.bias_frames, 'median')
 
                 self.bias_frames_exp = np.median(self.bias_frames_exp)
 
@@ -234,11 +246,11 @@ class ReductionWindow(MainWindow):
 
             if len(self.dark_frames) > 0:
                 if self.log.get_param('master_dark_method') == 'median':
-                    self.master_dark = np.array([np.nanmedian([xx[ff] for xx in self.dark_frames], 0) for ff in range(len(self.dark_frames[0]))])
+                    self.master_dark = combine_frames(self.dark_frames, 'median')
                 elif self.log.get_param('master_dark_method') == 'mean':
-                    self.master_dark = np.array([np.nanmean([xx[ff] for xx in self.dark_frames], 0) for ff in range(len(self.dark_frames[0]))])
+                    self.master_dark = combine_frames(self.dark_frames, 'mean')
                 else:
-                    self.master_dark = np.array([np.nanmedian([xx[ff] for xx in self.dark_frames], 0) for ff in range(len(self.dark_frames[0]))])
+                    self.master_dark = combine_frames(self.dark_frames, 'median')
             else:
                 self.master_dark = 0.0
 
@@ -280,11 +292,11 @@ class ReductionWindow(MainWindow):
 
             if len(self.darkf_frames) > 0:
                 if self.log.get_param('master_darkf_method') == 'median':
-                    self.master_darkf = np.array([np.nanmedian([xx[ff] for xx in self.darkf_frames], 0) for ff in range(len(self.darkf_frames[0]))])
+                    self.master_darkf = combine_frames(self.darkf_frames, 'median')
                 elif self.log.get_param('master_darkf_method') == 'mean':
-                    self.master_darkf = np.array([np.nanmean([xx[ff] for xx in self.darkf_frames], 0) for ff in range(len(self.darkf_frames[0]))])
+                    self.master_darkf = combine_frames(self.darkf_frames, 'mean')
                 else:
-                    self.master_darkf = np.array([np.nanmedian([xx[ff] for xx in self.darkf_frames], 0) for ff in range(len(self.darkf_frames[0]))])
+                    self.master_darkf = combine_frames(self.darkf_frames, 'median')
             else:
                 self.master_darkf = self.master_dark
 
@@ -330,10 +342,10 @@ class ReductionWindow(MainWindow):
             if len(self.flat_frames) > 0:
                 if self.log.get_param('master_flat_method') == 'mean':
                     flat_frames = [ff / np.nanmean(ff) for ff in self.flat_frames]
-                    self.master_flat = np.array([np.nanmean([xx[ff] for xx in flat_frames], 0) for ff in range(len(flat_frames[0]))])
+                    self.master_flat = combine_frames(flat_frames, 'mean')
                 else:
                     flat_frames = [ff / np.nanmedian(ff) for ff in self.flat_frames]
-                    self.master_flat = np.array([np.nanmedian([xx[ff] for xx in flat_frames], 0) for ff in range(len(flat_frames[0]))])
+                    self.master_flat = combine_frames(flat_frames, 'median')
                 print('Median Flat: ', round(np.nanmedian(self.master_flat), 3))
 
                 if self.colour_camera_mode:
