@@ -355,7 +355,8 @@ class ReductionWindow(MainWindow):
                 bp_map[:, -1] = 0
 
                 columns = np.arange(len(self.master_flat[0]))
-                for line in range(len(self.master_flat)):
+                # rows without bad pixels are returned unchanged by the interpolation
+                for line in np.where(bp_map.any(axis=1))[0]:
                     clean_pixs = np.where(bp_map[line] == 0)[0]
                     # what interp1d(clean_pixs, values) evaluates to for these inputs
                     self.master_flat[line] = np.interp(columns, clean_pixs, self.master_flat[line][clean_pixs])
