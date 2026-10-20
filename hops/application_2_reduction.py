@@ -351,7 +351,13 @@ class ReductionWindow(MainWindow):
                 bp_map = np.where(np.isnan(self.master_flat), 1, bp_map)
                 bp_map = np.where(self.master_flat==np.inf, 1, bp_map)
 
-                self.master_flat[np.int_(bp_map)] = 1
+                # Same result as `self.master_flat[np.int_(bp_map)] = 1` (indexing with the 0/1 map selects
+                # whole rows: row 0 if there is a good pixel, row 1 if there is a bad one), without writing a
+                # full row once per pixel.
+                if (bp_map == 0).any():
+                    self.master_flat[0] = 1
+                if (bp_map == 1).any():
+                    self.master_flat[1] = 1
                 bp_map[:, 0] = 0
                 bp_map[:, -1] = 0
 
