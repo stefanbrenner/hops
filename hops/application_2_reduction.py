@@ -150,7 +150,7 @@ class ReductionWindow(MainWindow):
                 self.progress_bias.initiate(len(self.bias_files))
 
             fits_data, fits_header = self.get_fits_data_and_header(self.bias_files[self.bias_counter])
-            self.bias_frames.append(np.ones_like(fits_data) * fits_data)
+            self.bias_frames.append(fits_data)
 
             try:
                 bias_exptime = fits_header[self.log.get_param('exposure_time_key')]
@@ -212,7 +212,7 @@ class ReductionWindow(MainWindow):
                 self.progress_dark.initiate(len(self.dark_files))
 
             fits_data, fits_header = self.get_fits_data_and_header(self.dark_files[self.dark_counter])
-            dark_frame = np.ones_like(fits_data) * fits_data
+            dark_frame = fits_data
             self.dark_frames.append((dark_frame - self.master_bias) / (fits_header[self.log.get_param('exposure_time_key')] - self.bias_frames_exp))
 
             print('{0}: median = {1}'.format(self.dark_files[self.dark_counter], np.nanmedian(self.dark_frames[-1])))
@@ -258,7 +258,7 @@ class ReductionWindow(MainWindow):
                 self.progress_darkf.initiate(len(self.darkf_files))
 
             fits_data, fits_header = self.get_fits_data_and_header(self.darkf_files[self.darkf_counter])
-            darkf_frame = np.ones_like(fits_data) * fits_data
+            darkf_frame = fits_data
             self.darkf_frames.append((darkf_frame - self.master_bias) / (fits_header[self.log.get_param('exposure_time_key')] - self.bias_frames_exp))
 
             print('{0}: median = {1}'.format(self.darkf_files[self.darkf_counter], np.nanmedian(self.darkf_frames[-1])))
@@ -304,7 +304,7 @@ class ReductionWindow(MainWindow):
                 self.progress_flat.initiate(len(self.flat_files))
 
             fits_data, fits_header = self.get_fits_data_and_header(self.flat_files[self.flat_counter])
-            flat_frame = np.ones_like(fits_data) * fits_data
+            flat_frame = fits_data
 
             self.flat_frames.append(
                 flat_frame - self.master_bias - (fits_header[self.log.get_param('exposure_time_key')] - self.bias_frames_exp) * self.master_darkf)
@@ -406,10 +406,13 @@ class ReductionWindow(MainWindow):
             centroids_snr = self.log.get_param('centroids_snr')
             stars_snr = self.log.get_param('stars_snr')
             psf_guess = self.log.get_param('psf_guess')
-            data_frame = np.ones_like(fits_data) * fits_data
+            # get_fits_data_and_header returns a new float array: calibrate it in place
+            data_frame = fits_data
             dq_frame = np.where(data_frame == saturation, 1, 0)
-            data_frame = (data_frame - self.master_bias - (exp_time - self.bias_frames_exp) * self.master_dark) / self.master_flat
-            data_frame[np.where(np.isnan(data_frame))] = 0
+            data_frame -= self.master_bias
+            data_frame -= (exp_time - self.bias_frames_exp) * self.master_dark
+            data_frame /= self.master_flat
+            data_frame[np.isnan(data_frame)] = 0
 
             if timing:
                 print('Reduction: ', time.time()-t0)
