@@ -19,6 +19,8 @@ def combine_frames(frames, method):
     """Pixel-wise nanmedian (or nanmean) of a list of frames, in blocks of rows.
 
     Gives the same values as the per-row list comprehension it replaces, much faster."""
+    if len(frames) == 1:
+        return np.array(frames[0], dtype=float)
     combine = np.nanmean if method == 'mean' else np.nanmedian
     result = np.empty_like(frames[0], dtype=float)
     for start in range(0, len(frames[0]), 256):
