@@ -8,6 +8,7 @@ from hops.thirdparty import twirl
 from astropy import wcs
 from astropy.coordinates import SkyCoord, Distance
 from astropy.time import Time as astrotime
+from astropy.stats import sigma_clipped_stats
 import astropy.units as u
 from astropy.wcs.utils import fit_wcs_from_points, pixel_to_skycoord
 from photutils.aperture import CircularAperture, aperture_photometry
@@ -24,6 +25,23 @@ default_gaia_engine = _get_gaia_stars
 
 def image_mean_std(fits_data,
                    samples=10000, mad_filter=5.0):
+
+    mean, std = _image_mean_std(fits_data, samples, mad_filter)
+
+    # Very short exposures: the sky is only a few ADU above the bias, the pixel values are still
+    # (nearly) quantised to whole ADU and the distribution fit below locks on to one of these steps,
+    # giving a sub-ADU noise (a third of all pixels then look like stars). If a sigma-clipped estimate
+    # is clearly larger, it is the realistic one. Frames with a normal sky level are not affected.
+    if std < 1.0:
+        test_data = 1.0 * fits_data.flatten()[::int(fits_data.size / samples + 1)]
+        _, median, clipped_std = sigma_clipped_stats(test_data, sigma=3.0, maxiters=10)
+        if clipped_std > 2 * std:
+            return float(median), float(clipped_std)
+
+    return mean, std
+
+
+def _image_mean_std(fits_data, samples=10000, mad_filter=5.0):
 
     test_data = 1.0 * fits_data.flatten()
     test_data = test_data[::int(len(test_data)/samples + 1)]
