@@ -53,7 +53,7 @@ setup(
                  'Environment :: Console',
                  'Intended Audience :: Science/Research',
                  'Topic :: Scientific/Engineering :: Astronomy',
-                 'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+                 'License :: OSI Approved :: MIT License',
                  'Operating System :: MacOS :: MacOS X',
                  'Programming Language :: Python :: 3.7',
                  ],
